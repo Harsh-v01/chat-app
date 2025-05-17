@@ -65,6 +65,10 @@
           <div class="language-select">
             <div id="currentLanguage" class="current-language">English <i class="fas fa-caret-down"></i></div>
           </div>
+          <!-- Speech-to-text mic button -->
+          <button id="micBtn" class="mic-button" type="button" title="Speak your message">
+            <i class="fas fa-microphone"></i>
+          </button>
         </div>
         <button class="send-button" id="sendBtn" aria-label="Send message" disabled>
           <i class="fas fa-paper-plane"></i>
@@ -121,11 +125,14 @@
   const currentLangDisplay = document.getElementById('currentLanguage');
   const languageDropdown = document.getElementById('languageDropdown');
   const languageList = document.getElementById('languageList');
+  const micBtn = document.getElementById('micBtn');
   
   let currentUsername = '';
   let preferredLanguage = 'en';
   let mySocketId = null;
   let users = {};
+  let recognizing = false;
+  let recognition;
   
   // Check for saved theme preference
   if (localStorage.getItem('darkMode') === 'true') {
@@ -405,6 +412,8 @@
     
     messageWrapper.appendChild(msgHeader);
     messageWrapper.appendChild(messageEl);
+    // Add speaker button for your own message
+    addSpeakerButton(messageEl, text, preferredLanguage);
     messageWrapper.appendChild(timestampEl);
     chat.appendChild(messageWrapper);
     
@@ -530,9 +539,11 @@
         };
         
         messageWrapper.appendChild(toggle);
+        addSpeakerButton(messageEl, translatedText, preferredLanguage);
       } else {
         // Just show the original if no translation needed
         messageEl.textContent = originalText;
+        addSpeakerButton(messageEl, originalText, sourceLang);
       }
       
       // Add timestamp
@@ -567,7 +578,7 @@
       
     } catch (error) {
       console.error('Error handling message:', error);
-      
+       
       // Remove the loading indicator
       loadingIndicator.remove();
       
@@ -693,6 +704,7 @@
       name.textContent = user.username;
       name.style.marginBottom = '3px';
       
+      
       const langInfo = document.createElement('div');
       langInfo.style.fontSize = '12px';
       langInfo.style.color = 'var(--light-text)';
@@ -770,19 +782,108 @@
   
   // Initialize
   sendBtn.disabled = true;
+
+  // --- Speech to Text (STT) ---
+  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    micBtn.addEventListener('click', () => {
+      if (recognizing) {
+        recognition.stop();
+        return;
+      }
+      recognition.lang = preferredLanguage === 'en' ? 'en-US' : preferredLanguage; // crude mapping
+      recognition.start();
+    });
+
+    recognition.onstart = () => {
+      recognizing = true;
+      micBtn.classList.add('recording');
+    };
+    recognition.onend = () => {
+      recognizing = false;
+      micBtn.classList.remove('recording');
+    };
+    recognition.onerror = (e) => {
+      recognizing = false;
+      micBtn.classList.remove('recording');
+      alert('Speech recognition error: ' + e.error);
+    };
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      inputText.value = transcript;
+      inputText.dispatchEvent(new Event('input'));
+    };
+  } else {
+    micBtn.disabled = true;
+    micBtn.title = "Speech recognition not supported in this browser";
+  }
+
+  // --- Text to Speech (TTS) ---
+  function speakText(text, langCode) {
+    if (!window.speechSynthesis) {
+      alert('Text-to-speech not supported in this browser');
+      return;
+    }
+    const utter = new SpeechSynthesisUtterance(text);
+    // Try to set language, fallback to 'en'
+    utter.lang = langCode || 'en';
+    window.speechSynthesis.speak(utter);
+  }
+
+  // Add speaker button to each message (sent/received)
+  function addSpeakerButton(messageEl, text, langCode) {
+    const speakerBtn = document.createElement('button');
+    speakerBtn.className = 'speaker-btn';
+    speakerBtn.title = 'Listen';
+    speakerBtn.type = 'button';
+    speakerBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+    speakerBtn.onclick = (e) => {
+      e.stopPropagation();
+      speakText(text, langCode);
+    };
+    messageEl.appendChild(speakerBtn);
+  }
 </script>
 <script src="/js/debug.js"></script>
 <script src="/js/cleanup.js"></script>
 </body>
 </html>
-      }
-    });
-  }
-  
-  // Run cleanup on load and after a short delay
-  window.addEventListener('load', cleanupPage);
-  setTimeout(cleanupPage, 500);
-</script>
 
-</body>
-</html>
+<style>
+/* Add minimal styles for mic and speaker buttons */
+.mic-button {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  font-size: 20px;
+  margin-left: 8px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.mic-button.recording {
+  color: var(--error-color);
+  animation: pulse 1s infinite;
+}
+@keyframes pulse {
+  0% { color: var(--error-color); }
+  50% { color: #fff; }
+  100% { color: var(--error-color); }
+}
+.speaker-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  font-size: 18px;
+  margin-left: 8px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.speaker-btn:hover {
+  color: var(--accent-color);
+}
+</style>

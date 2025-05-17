@@ -1,8 +1,3 @@
-/**
- * Critical layout fixes for chat app
- * This file contains essential layout corrections and cleanup
- */
-
 /* Fix overall layout */
 .app-container {
   display: flex !important;
